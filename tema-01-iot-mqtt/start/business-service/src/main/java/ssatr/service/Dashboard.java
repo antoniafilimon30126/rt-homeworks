@@ -1,23 +1,51 @@
 package ssatr.service;
 
-/**
- * Ultima stare cunoscută a fiecărui device: ultima temperatură, momentul
- * ultimului mesaj, numărul de alarme etc.
- *
- * Este actualizată de thread-urile MessageProcessor și citită de CommandConsole,
- * deci accesul trebuie sincronizat.
- */
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.Locale;
+
 public class Dashboard {
 
-    // TODO 5: alegeți structura de date pentru starea device-urilor
-    //   (de exemplu un Map<String, ...> cu cheia deviceId)
-    //   și adăugați metodele de actualizare apelate din MessageProcessor.
+    // Structura internă pentru starea unui device
+    private static class DeviceState {
+        String lastTemp = "-";
+        long lastMessageTime = 0;
+        int alarmCount = 0;
+    }
 
-    /** Afișează un tabel cu starea tuturor device-urilor. */
+    private final Map<String, DeviceState> devices = new ConcurrentHashMap<>();
+
+    // Metode de actualizare apelate din MessageProcessor
+    public void updateTelemetry(String deviceId, String temp, long timestamp) {
+        DeviceState state = devices.computeIfAbsent(deviceId, k -> new DeviceState());
+        state.lastTemp = temp;
+        state.lastMessageTime = timestamp;
+    }
+
+    public void incrementAlarm(String deviceId, long timestamp) {
+        DeviceState state = devices.computeIfAbsent(deviceId, k -> new DeviceState());
+        state.alarmCount++;
+        state.lastMessageTime = timestamp;
+    }
+
+    public void updateStatus(String deviceId, long timestamp) {
+        DeviceState state = devices.computeIfAbsent(deviceId, k -> new DeviceState());
+        state.lastMessageTime = timestamp;
+    }
+
     public void print() {
-        // TODO 5: afișați câte un rând pentru fiecare device, de exemplu:
-        //   DEVICE     TEMP    ULTIMUL MESAJ   ALARME
-        //   device-1   23.41   acum 1 s        2
-        System.out.println("(dashboard neimplementat)");
+        System.out.println("DEVICE\t\tTEMP\tULTIMUL MESAJ\tALARME");
+        long now = System.currentTimeMillis();
+
+        if (devices.isEmpty()) {
+            System.out.println("(Niciun device conectat încă)");
+        }
+
+        for (Map.Entry<String, DeviceState> entry : devices.entrySet()) {
+            String id = entry.getKey();
+            DeviceState s = entry.getValue();
+            String age = s.lastMessageTime == 0 ? "-" : ((now - s.lastMessageTime) / 1000) + " s";
+            System.out.println(String.format(Locale.US, "%-10s\t%s\t%s\t\t%d", id, s.lastTemp, age, s.alarmCount));
+        }
     }
 }

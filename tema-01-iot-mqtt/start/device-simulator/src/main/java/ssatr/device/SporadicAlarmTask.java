@@ -27,15 +27,36 @@ public class SporadicAlarmTask implements Runnable {
 
     @Override
     public void run() {
-        // TODO 2: implementați taskul sporadic:
-        //   - așteptați un eveniment: alarmEvents.take()
-        //   - dacă de la ultima eliberare au trecut mai puțin de
-        //     MIN_INTERARRIVAL_MS, respingeți evenimentul (afișați un mesaj)
-        //   - altfel publicați pe Config.alarmTopic(deviceId) mesajul
-        //     "deviceId;timestamp;temperatura;prag"
-        //     (pragul curent poate fi transmis împreună cu temperatura sau
-        //      citit din PeriodicTelemetryTask; alegeți și justificați în raport)
-        //
-        // Vezi exemplul exemple/01-taskuri/.../SporadicTaskExample.java
+        long lastRelease = 0;
+
+        while (true) {
+            try {
+                Double temp = alarmEvents.take();
+                long now = System.currentTimeMillis();
+
+                long sinceLast = now - lastRelease;
+                if (sinceLast < MIN_INTERARRIVAL_MS) {
+                    System.out.println("[sporadic] RESPINSĂ alarmă de la " + deviceId + ": au trecut doar " + sinceLast + " ms");
+                    continue;
+                }
+
+                lastRelease = now;
+
+                // Alegem să transmitem pragul ca valoare separată (ar fi ideal
+                // să îl primim din event, dar pentru simplitate considerăm că
+                // pragul e depășit clar, și e doar o notificare)
+                // Conform enunț: deviceId;timestamp;temperatura;prag
+                // Putem să punem un placeholder sau să luăm referința la threshold
+                String tempStr = String.format(java.util.Locale.US, "%.2f", temp);
+                String payload = deviceId + ";" + now + ";" + tempStr + ";DEPĂȘIT";
+
+                mqtt.publish(Config.alarmTopic(deviceId), payload);
+                System.out.println("[sporadic] Alarmă publicată de la " + deviceId + ": " + tempStr);
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
     }
 }

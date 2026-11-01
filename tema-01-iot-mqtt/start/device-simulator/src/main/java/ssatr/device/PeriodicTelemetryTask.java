@@ -31,22 +31,38 @@ public class PeriodicTelemetryTask implements Runnable {
 
     @Override
     public void run() {
-        // TODO 1: implementați bucla taskului periodic. Fiecare job:
-        //   - citiți temperatura: sensor.read()
-        //   - publicați pe Config.telemetryTopic(deviceId) mesajul "deviceId;timestamp;temperatura"
-        //     (timestamp = System.currentTimeMillis(); temperatura cu punct zecimal,
-        //      de ex. String.format(Locale.US, "%.2f", t), ca să poată fi citită
-        //      cu Double.parseDouble în business-service)
-        //   - dacă temperatura > threshold, puneți valoarea în coada alarmEvents
-        //
-        // Folosiți așteptare absolută, nu relativă: Thread.sleep(periodMs) după
-        // fiecare job duce la derivă (perioada reală devine T + C + întârzieri).
-        // Calculați eliberarea următorului job pe grilă (next = next + periodMs)
-        // și așteptați doar cât a mai rămas până la ea. Pentru grilă folosiți
-        // un timp monoton: System.nanoTime().
-        //
-        // periodMs se poate schimba în timpul rulării (comanda SET_INTERVAL),
-        // deci citiți-l la fiecare job.
+        long nextRelease = System.nanoTime(); // Prima eliberare este acum
+
+        while (true) {
+            try {
+                // Setează eliberarea pe grilă (r_k = r_{k-1} + T)
+                nextRelease += periodMs * 1_000_000L;
+
+                long currentNano = System.nanoTime();
+                long sleepTimeMs = (nextRelease - currentNano) / 1_000_000L;
+
+                if (sleepTimeMs > 0) {
+                    Thread.sleep(sleepTimeMs); // Așteptare absolută
+                }
+
+                // Citim și publicăm
+                double temp = sensor.read();
+                long timestamp = System.currentTimeMillis();
+                String tempStr = String.format(java.util.Locale.US, "%.2f", temp);
+
+                String payload = deviceId + ";" + timestamp + ";" + tempStr;
+                mqtt.publish(Config.telemetryTopic(deviceId), payload);
+
+                // Dacă depășește pragul, semnalăm alarmă
+                if (temp > threshold) {
+                    alarmEvents.put(temp);
+                }
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
     }
 
     public void setPeriodMs(long periodMs) {
